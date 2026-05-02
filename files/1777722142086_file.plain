@@ -1,0 +1,321 @@
+SUPREME ARCHITECT DEVELOPER — ALIP-AI BOT RULESET
+
+Gunakan template dan aturan berikut untuk menghasilkan kode JavaScript “case” yang 100% valid, anti-crash, dan terisolasi di dalam handler WhatsApp bot ALIP-AI.
+
+---
+
+I. KERANGKA CASE (WAJIB)
+
+```js
+case 'namafitur': {
+    // ═══ 1. VALIDASI USER & LIMIT ═══
+
+    // ═══ 2. VALIDASI INPUT ═══
+
+    // ═══ 3. KONSUMSI LIMIT ═══
+
+    // ═══ 4. REACT / REPLY START ═══
+
+    // ═══ 5. LOGIKA UTAMA (WRAPED) ═══
+    try {
+        // ... kode fitur ...
+    } catch (e) {
+        await alip.sendMessage(m.chat, { react: { text: "❌", key: m.key } });
+        Reply(mess.error);
+    }
+}
+break;
+```
+
+---
+
+II. VARIABEL GLOBAL YANG TERSEDIA (JANGAN DI‑DEKLARASI ULANG)
+
+Nama Deskripsi
+alip Koneksi WhatsApp (sering disebut sock)
+m Objek pesan lengkap
+text / q Teks mentah setelah command
+command Nama command saat ini
+args Array argumen setelah command
+prefix Simbol prefix (misal .)
+isCreator true jika pengirim adalah owner
+isPremium true jika pengirim adalah premium
+isRegistered() Fungsi cek registrasi user
+Reply(teks) Kirim pesan dengan template bot
+qmeta Objek quoted palsu (style 1)
+troli Objek quoted palsu (style 2)
+global.mess Kumpulan string pesan (.wait, .limit, .owner, dll.)
+global.botname Nama bot
+daftar(pesan) Fungsi kirim pesan daftar
+checkLimit(jid, isPrem, isCreator) Cek limit (return true jika habis)
+addLimit(jid, isPrem, isCreator) Tambah konsumsi limit
+
+---
+
+III. LAPISAN VALIDASI (BERURUTAN)
+
+1. Registrasi
+
+```js
+if (!isRegistered(m.sender) && !isCreator)
+    return daftar(global.mess.verifikasi);
+```
+
+2. Akses Khusus (Premium / Limit)
+
+```js
+// Untuk fitur premium:
+if (!global.isPrem(m.sender) && !isCreator) return Reply(mess.prem);
+
+// Untuk fitur umum:
+if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+```
+
+3. Input Minimal
+
+```js
+if (!text) return Reply(example("teks yang dibutuhkan"));
+```
+
+4. Konsumsi Limit
+
+```js
+addLimit(m.sender, isPremium, isCreator);
+```
+
+5. Indikator Proses & React
+
+```js
+await alip.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+Reply(mess.wait);
+```
+
+---
+
+IV. LOGIKA TARGET (KONVERSI LID KE JID)
+
+```js
+let target = m.mentionedJid[0] 
+            || (m.quoted ? m.quoted.sender : m.sender);
+if (target.endsWith('@lid') && m.metadata?.participants) {
+    let p = m.metadata.participants.find(x => x.lid === target || x.id === target);
+    if (p) target = p.jid;
+}
+```
+
+---
+
+V. NAMESPACE BAILEYS (ANTI KONFLIK)
+
+```js
+const {
+    prepareWAMessageMedia: _upMedia,
+    generateWAMessageFromContent: _genMsg,
+    proto: _proto
+} = require('@whiskeysockets/baileys');
+```
+
+---
+
+VI. VISUAL STYLING (WAJIB)
+
+Semua output teks harus menggunakan format border:
+
+```
+╭─❏ JUDUL CAPITAL
+│ isi pesan...
+╰──────────❏
+```
+
+Ganti semua branding/watermark pihak ketiga dengan ${global.botname}.
+
+---
+
+VII. UPLOADER ELAINA (GAMBAR / VIDEO → URL)
+
+```js
+const FormData = require('form-data');
+const { fromBuffer } = require('file-type');
+let { ext } = await fromBuffer(buffer);
+let form = new FormData();
+form.append('file', buffer, 'file.' + ext);
+let res = await axios.post('https://www.alip.clutch.web.id/api/upload', form, { headers: form.getHeaders() });
+let imageUrl = res.data.result || res.data.url;
+```
+
+---
+
+VIII. CONTOH CASE SESUAI TEMPLATE
+
+8.1 Case Teks Sederhana (.ping2)
+
+```js
+case 'ping2': {
+    if (!isRegistered(m.sender) && !isCreator) return daftar(global.mess.verifikasi);
+    if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+    addLimit(m.sender, isPremium, isCreator);
+
+    await alip.sendMessage(m.chat, { react: { text: "🚀", key: m.key } });
+    let latensi = Date.now() - (m.messageTimestamp * 1000);
+    
+    Reply(`╭─❏ SPEED TEST
+│ 🚀 ${botname}
+│ ⏱️ ${latensi} ms
+╰──────────❏`);
+}
+break;
+```
+
+---
+
+8.2 Case Gambar + Target (.getpp)
+
+```js
+case 'getpp': {
+    if (!isRegistered(m.sender) && !isCreator) return daftar(global.mess.verifikasi);
+    if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+    if (!text && !m.quoted) return Reply(`Contoh: ${prefix + command} @tag / reply`);
+
+    addLimit(m.sender, isPremium, isCreator);
+    await alip.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+
+    let target = m.mentionedJid[0] || (m.quoted ? m.quoted.sender : null);
+    if (!target) target = text.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+    // LID fix
+    if (target.endsWith('@lid') && m.metadata?.participants) {
+        let p = m.metadata.participants.find(x => x.lid === target || x.id === target);
+        if (p) target = p.jid;
+    }
+
+    try {
+        let ppUrl = await alip.profilePictureUrl(target, 'image').catch(() => 'https://telegra.ph/file/a059a6a734ed202c879d3.jpg');
+        await alip.sendMessage(m.chat, {
+            image: { url: ppUrl },
+            caption: `╭─❏ FOTO PROFIL
+│ 👤 @${target.split('@')[0]}
+╰──────────❏`,
+            mentions: [target]
+        }, { quoted: m });
+    } catch (e) {
+        Reply(mess.error);
+    }
+}
+break;
+```
+
+---
+
+8.3 Case API Eksternal (.ai)
+
+```js
+case 'ai': {
+    if (!isRegistered(m.sender) && !isCreator) return daftar(global.mess.verifikasi);
+    if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+    if (!text && !m.quoted?.text) return Reply(example("pertanyaan kamu"));
+
+    addLimit(m.sender, isPremium, isCreator);
+    await alip.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+
+    let prompt = text || m.quoted.text;
+    try {
+        let { data } = await axios.get(`${global.apialip}/ai/gemini`, { params: { prompt } });
+        Reply(`╭─❏ AI GEMINI
+│ 🤖 ${botname}
+│ ${data.result}
+╰──────────❏`);
+    } catch (e) {
+        Reply(mess.error);
+    }
+}
+break;
+```
+
+---
+
+8.4 Case Game / State (.tebaklirik)
+
+```js
+case 'tebaklirik': {
+    if (!isRegistered(m.sender) && !isCreator) return daftar(global.mess.verifikasi);
+    if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+    addLimit(m.sender, isPremium, isCreator);
+
+    await alip.sendMessage(m.chat, { react: { text: "🎵", key: m.key } });
+    Reply(mess.wait);
+
+    const { soal, jawaban } = await fetchJson('https://api.example.com/tebaklirik');
+    if (!soal) return Reply('Gagal ambil soal');
+
+    global.gameSessions[m.chat] = {
+        jawaban, soal, messageId: null, timeout: null
+    };
+
+    try {
+        let sent = await Reply(`🎤 TEBAK LIRIK\n\n${soal}`);
+        global.gameSessions[m.chat].messageId = sent.key.id;
+        global.gameSessions[m.chat].timeout = setTimeout(() => {
+            if (global.gameSessions[m.chat]) {
+                Reply(`⏰ Waktu habis! Jawaban: ${jawaban}`);
+                delete global.gameSessions[m.chat];
+            }
+        }, 60000);
+    } catch (e) {
+        Reply(mess.error);
+    }
+}
+break;
+```
+
+---
+
+8.5 Case Upload & Edit Gambar (.hd)
+
+```js
+case 'hd': {
+    if (!isRegistered(m.sender) && !isCreator) return daftar(global.mess.verifikasi);
+    if (!global.isPrem(m.sender) && !isCreator) return Reply(mess.prem);
+    let q = m.quoted ? m.quoted : m;
+    let mime = (q.msg || q).mimetype || '';
+    if (!/image/.test(mime)) return Reply('❌ Reply gambar!');
+
+    if (checkLimit(m.sender, isPremium, isCreator)) return Reply(global.mess.limit);
+    addLimit(m.sender, isPremium, isCreator);
+    await alip.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+    Reply(mess.wait);
+
+    try {
+        let buffer = await q.download();
+        // Upload ke Elaina
+        const FormData = require('form-data');
+        const { fromBuffer } = require('file-type');
+        let { ext } = await fromBuffer(buffer);
+        let form = new FormData();
+        form.append('file', buffer, 'hd.' + ext);
+        let { data } = await axios.post('https://www.alip.clutch.web.id/api/upload', form, { headers: form.getHeaders() });
+        let imageUrl = data.result || data.url;
+
+        // Proses HD via API
+        let hdUrl = `${global.apialip}/imagecreator/remini?apikey=${global.apikeyalip}&url=${encodeURIComponent(imageUrl)}`;
+        let hdBuffer = await axios.get(hdUrl, { responseType: 'arraybuffer' }).then(r => r.data);
+
+        await alip.sendMessage(m.chat, { image: hdBuffer, caption: '✅ HD Selesai' }, { quoted: m });
+    } catch (e) {
+        Reply(mess.error);
+    }
+}
+break;
+```
+
+---
+
+IX. PERINTAH UNTUK AI
+
+“Buat hanya kode case JavaScript yang mengikuti template di atas. Jangan berikan penjelasan, jangan gunakan komentar panjang, langsung kode. Gunakan variabel global yang tersedia, pastikan validasi, try‑catch, dan target handling sudah benar. Output harus siap tempel ke dalam switch‑case handler.”
+
+
+
+𝗬𝗔𝗡𝗚 𝗣𝗔𝗟𝗜𝗡𝗚 𝗣𝗘𝗡𝗧𝗜𝗡𝗚 𝗝𝗔𝗡𝗚𝗔𝗡 𝗕𝗨𝗔𝗧 𝗖𝗢𝗗𝗘 𝗬𝗔𝗡𝗚 𝗠𝗘𝗥𝗨𝗦𝗔𝗞 𝗙𝗜𝗧𝗨𝗥 𝗟𝗔𝗜𝗡 𝗗𝗔𝗡 𝗠𝗘𝗥𝗨𝗦𝗔𝗞 𝗦𝗖 𝗕𝗢𝗧 𝗚𝗪, 𝗣𝗢𝗞𝗢𝗞𝗡𝗬𝗔 𝗕𝗨𝗔𝗧 𝗙𝗜𝗧𝗨𝗥 𝗬𝗔𝗡𝗚 𝟭𝟬𝟬℅ 𝗡𝗢 𝗘𝗥𝗢𝗥 𝗡𝗢 𝗕𝗨𝗚 𝗗𝗔𝗡 𝗚𝗔𝗞 𝗠𝗘𝗥𝗨𝗦𝗔𝗞 𝗙𝗜𝗧𝗨𝗥 𝗟𝗔𝗜𝗡, 𝗧𝗘𝗥𝗨𝗦, 𝗞𝗔𝗟𝗢𝗞 𝗔𝗗𝗔 𝗙𝗜𝗧𝗨𝗥 𝗬𝗔𝗡𝗚 𝗠𝗔𝗛 𝗗𝗜 𝗖𝗢𝗡𝗩𝗘𝗥𝗧 𝗧𝗘𝗥𝗨𝗦 𝗛𝗔𝗥𝗨𝗦 𝗕𝗨𝗧𝗨𝗛 𝗙𝗢𝗟𝗗𝗘𝗥 𝗧𝗔𝗠𝗕𝗔𝗛𝗔𝗡, 𝗖𝗔𝗥𝗜 𝗙𝗢𝗟𝗗𝗘𝗥𝗡𝗬𝗔 𝗞𝗔𝗟𝗢𝗞 𝗘𝗠𝗔𝗡𝗚 𝗚𝗔𝗞 𝗔𝗗𝗔 𝗕𝗔𝗥𝗨 𝗜𝗦𝗜 𝗠𝗘𝗞𝗔𝗡𝗜𝗦𝗠𝗘 𝗔𝗨𝗧𝗢 𝗕𝗨𝗔𝗧 𝗙𝗢𝗟𝗗𝗘𝗥
+Link sc gw
+https://raw.githubusercontent.com/julzkeceabiez/shadow-tourl-storage/main/files/1777720765102_file.zip
+𝗟𝗨 𝗔𝗡𝗔𝗟𝗜𝗦𝗔 𝗦𝗖 𝗚𝗪 𝗜𝗧𝗨 𝗗𝗔𝗡 𝗕𝗨𝗔𝗧 𝗖𝗢𝗗𝗘 𝟭𝟬𝟬℅ 𝗡𝗢 𝗘𝗥𝗢𝗥 𝗡𝗢 𝗕𝗨𝗚 𝗜𝗡𝗚𝗘𝗧 𝗬𝗔 𝗡𝗢 𝗘𝗥𝗢𝗥 𝗡𝗢 𝗕𝗨𝗚
+𝗦𝗔𝗠𝗔 𝗧𝗔𝗠𝗕𝗔𝗛𝗔𝗡 𝗞𝗔𝗟𝗢𝗞 𝗨𝗦𝗘𝗥 𝗗𝗜 𝗕𝗜𝗟𝗔𝗡𝗚 𝗞𝗔𝗟𝗢𝗞 𝗕𝗨𝗔𝗧 𝗙𝗜𝗧𝗨𝗥 𝗜𝗡𝗜 𝗝𝗔𝗗𝗜 𝗣𝗥𝗘𝗠𝗜𝗨𝗠 𝗕𝗨𝗔𝗧 𝗬𝗔 𝗝𝗔𝗗𝗜 𝗞𝗛𝗨𝗦𝗨𝗦 𝗣𝗥𝗘𝗠𝗜𝗨𝗠, 𝗣𝗢𝗞𝗢𝗞𝗡𝗬𝗔 𝗞𝗔𝗟𝗢𝗞 𝗨𝗦𝗘𝗥 𝗠𝗜𝗡𝗧𝗔 𝗙𝗜𝗧𝗨𝗥 𝗜𝗡𝗜 𝗞𝗛𝗨𝗦𝗨𝗦 𝗜𝗡𝗜 𝗧𝗨𝗥𝗨𝗧𝗜𝗡 𝗔𝗝𝗔, 𝗣𝗢𝗞𝗢𝗞𝗡𝗬𝗔 𝗟𝗨 𝗛𝗔𝗥𝗨𝗦 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘 𝗖𝗢𝗗𝗘 𝗬𝗔𝗡𝗚 𝗚𝗔𝗞 𝗡𝗚𝗘𝗥𝗨𝗦𝗔𝗞 𝗔𝗣𝗔𝗣𝗨𝗡 𝗗𝗔𝗡 𝟭𝟬𝟬℅ 𝗕𝗘𝗥𝗙𝗨𝗡𝗚𝗦𝗜
